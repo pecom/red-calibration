@@ -263,23 +263,28 @@ class RealArray:
         flat_vec = np.concatenate((reals, imags))
         return flat_vec
     
-    def linear_solver_B(self, beams, gains,data,ant_i, ant_j, fndx):
+    def linear_solver_A(beams, gains, data, ant_i, ant_j, fndx):
         # Solve for visibilities using a linear method
-        big_ans = data
+        big_ans = imag_to_reals(data)
         data_len = len(data)
         v_size = len(set(np.abs(fndx).flatten())) + 1
         postage = np.array([signal.convolve(beams[ant_i[i]], np.conjugate(beams[ant_j[i]][::-1, ::-1])).flatten()*gains[ant_i[i]]*np.conjugate(gains[ant_j[i]]) for i in range(len(fndx))])
-        bigA = sparse.lil_matrix((data_len, v_size), dtype=np.complex128)
+        bigA = sparse.lil_matrix((2*data_len, 2*v_size))
         for i,v in enumerate(fndx):
             absv = np.abs(v)
-            bigA[i,absv] = postage[i]
+            bigA[i,absv] = postage[i].real
+            bigA[i, v_size+absv] = -1*np.sign(v)*postage[i].imag
+            bigA[i+data_len, absv] = postage[i].imag
+            bigA[i+data_len, v_size+absv] = np.sign(v)*postage[i].real
         bigCSR = bigA.tocsr()
         return bigCSR, big_ans
 
     def vis_solver(self, guess, beams, gains, data, ant_i, ant_j, fndx):
-        bigA, bigB = self.linear_solver_B(beams, gains, data, ant_i, ant_j, fndx)
-        map_sol = sparse.linalg.lsqr(bigA, bigB, atol=1e-5)[0]
-        return map_sol
+        bigA, bigB = linear_solver_A(beams, gains, data, ant_i, ant_j, fndx)
+        map_sol = sparse.linalg.lsqr(bigA, bigB, atol=1e-9)[0]
+        v_size = len(guess)
+        comb_sol = map_sol[:v_size] + 1j*map_sol[v_size:]
+        return comb_sol
 
     def padded_circulant(self, col):
         c_len = len(col)
