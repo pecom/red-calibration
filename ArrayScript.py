@@ -262,30 +262,24 @@ class RealArray:
         imags = vec.imag
         flat_vec = np.concatenate((reals, imags))
         return flat_vec
-
-    def linear_solver_A(self, beams, gains, data,ant_i, ant_j, fndx):
+    
+    def linear_solver_B(self, beams, gains,data,ant_i, ant_j, fndx):
         # Solve for visibilities using a linear method
-        big_ans = self.imag_to_reals(data)
+        big_ans = data
         data_len = len(data)
         v_size = len(set(np.abs(fndx).flatten())) + 1
         postage = np.array([signal.convolve(beams[ant_i[i]], np.conjugate(beams[ant_j[i]][::-1, ::-1])).flatten()*gains[ant_i[i]]*np.conjugate(gains[ant_j[i]]) for i in range(len(fndx))])
-        bigA = sparse.lil_matrix((2*data_len, 2*v_size))
+        bigA = sparse.lil_matrix((data_len, v_size), dtype=np.complex128)
         for i,v in enumerate(fndx):
             absv = np.abs(v)
-            bigA[i,absv] = postage[i].real
-            bigA[i, v_size+absv] = -1*np.sign(v)*postage[i].imag
-            bigA[i+data_len, absv] = np.sign(v)*postage[i].imag
-            bigA[i+data_len, v_size+absv] = postage[i].real
+            bigA[i,absv] = postage[i]
         bigCSR = bigA.tocsr()
         return bigCSR, big_ans
 
     def vis_solver(self, guess, beams, gains, data, ant_i, ant_j, fndx):
-        bigA, bigB = self.linear_solver_A(beams, gains, data, ant_i, ant_j, fndx)
-        map_guess = self.imag_to_reals(guess)
+        bigA, bigB = self.linear_solver_B(beams, gains, data, ant_i, ant_j, fndx)
         map_sol = sparse.linalg.lsqr(bigA, bigB, atol=1e-5)[0]
-        v_size = len(guess)
-        comb_sol = map_sol[:v_size] + 1j*map_sol[v_size:]
-        return comb_sol
+        return map_sol
 
     def padded_circulant(self, col):
         c_len = len(col)
@@ -374,7 +368,9 @@ class RealArray:
         chis.append(chi)
         scores.append(score)
         for n in range(iter_max):
-            new_vis = self.vis_solver(vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx)     
+            
+            new_vis = self.vis_solver(vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx)
+                
             vis_guess = new_vis
             
             new_beams = self.beam_solver(vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx, Nside, enf_sym, bcenter)
@@ -433,7 +429,7 @@ class RealArray:
         self.beams = basic_beams
 
     def geometry_error(self, pixel_max, axi=None):
-        if axis is not None:
+        if axi is not None:
             for i, b in enumerate(self.beams):
                 self.beams[i] = np.roll(b, np.random.randint(0, pixel_max+1), axis=axi)
         else:
@@ -453,7 +449,7 @@ class RealArray:
             beam_flipped = np.array([pos_beamy[::-1], pos_beamx[:,::-1]])
             offsets = np.sum(beam_flipped*phase_dphi[:,None,None], axis=0)
             phase_vec = np.exp(1j*offsets)
-            phase_beams.append(beams[i]*phase_vec)
+            phase_beams.append(self.beams[i]*phase_vec)
         phase_beams = np.array(phase_beams)
         self.beams = phase_beams
 
