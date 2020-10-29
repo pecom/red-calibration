@@ -311,7 +311,7 @@ class RealArray:
         shaped_circ = unshape_circ.transpose(0, 2, 1, 3).reshape(finshape**2, nb**2)
         return shaped_circ   
 
-    def beam_solver(self, vis, beam_guess, gains, data, ant_i, ant_j, flatndx, Nside, enforce_sym=False, bcenter=None):
+    def beam_solver(self, vis, beam_guess, gains, data, ant_i, ant_j, flatndx, Nside):
         Nant = Nside**2
         n_beam = beam_guess.shape[1]
         fn_bm = 2*n_beam - 1
@@ -342,22 +342,6 @@ class RealArray:
                 beam_solver[i] = self.conjugate_visib(vis, flatndx[ant_filter][i])[None,:] @ np.conjugate(matrix_beams[ant_j[ant_filter]][i][::-1, ::-1])*gains[ant_i[ant_filter]][i]*np.conjugate(gains[ant_j[ant_filter]][i])
             for j in range(np.sum(jant_filter)):
                 beam_solver[sum_ants + j] = (np.conjugate(self.conjugate_visib(vis, flatndx[jant_filter][j])[None,:]) @ np.conjugate(matrix_beams[ant_i[jant_filter]][j]))[::-1,::-1]*gains[ant_j[jant_filter]][j]*np.conjugate(gains[ant_i[jant_filter]][j])
-            
-            if enforce_sym:
-                for j in set(symconv):
-                    jsymline = np.zeros(n_beam**2, dtype=np.complex128)
-                    if j==symconv[center_ofsymbeam]:
-                        continue
-                    else:
-                        jsymndx = np.where(symconv == j)[0]
-                        symlen = len(jsymndx)
-                        for k in range(symlen):
-                            for l in range(k+1, symlen):
-                                ksymline = np.zeros(n_beam**2, dtype=np.complex128)
-                                ksymline[jsymndx[k]] = 90
-                                ksymline[jsymndx[l]] = -90
-                                beam_solver = np.concatenate((beam_solver, ksymline[None,:]))
-                                rhs_vis = np.concatenate((rhs_vis, [0]))
 
             zerobeam = optimize.lsq_linear(beam_solver, rhs_vis).x
             shaped_beam = zerobeam.reshape((n_beam, n_beam))
@@ -365,7 +349,7 @@ class RealArray:
             new_beams[ant_ndx] = shaped_beam
         return new_beams
 
-    def solve_everything(self, iter_max, vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx, Nside, noise, enf_sym=False, bcenter=None, score_max = 1, score_eps=1e-5):
+    def solve_everything(self, iter_max, vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx, Nside, noise, chi_eps=1):
         chis = []
         scores = []
         model = self.flat_model(vis_guess, beam_guess, gains, ant_i, ant_j, flatndx)
@@ -387,11 +371,15 @@ class RealArray:
             chis.append(chi)
             scores.append(score)
             if n > 5:
-                if ((score - score_max) < score_eps):
+                if (np.abs(chi - chis[-2]) < chi_eps):
                     break
+                if score < 1:
+                    break
+            if n%5==0:
+                print(n, score)
         chis = np.array(chis)
         scores = np.array(scores)
-        print("Iteration:", n, scores)
+        print("Final Iteration:", n, scores)
         
         return vis_guess, beam_guess, chis, scores
 
@@ -468,7 +456,7 @@ class RealArray:
         self.ant_j = ant_j
         self.data_len = len(data)
 
-    def create_fit(self, outbeam, nmax=100, sym=False, bguess = None, ibeam=None):
+    def create_fit(self, outbeam, nmax=100, bguess = None, ibeam=None):
         bshape = (self.Nant, outbeam, outbeam)
         fakeflat, _, _ = self.create_fake_flatndx(self.Nside, outbeam)
         fakevislen = len(set(np.abs(fakeflat).flatten()))+1
@@ -482,4 +470,4 @@ class RealArray:
         else:
             self.improv_beam = np.random.normal(0, 1, (*bshape, 2)).view(np.complex128).reshape(bshape)
 
-        self.itersolve = self.solve_everything(nmax, self.bad_guess, self.improv_beam, self.gains, self.data, self.ant_i, self.ant_j, fakeflat, self.Nside, self.noise, enf_sym=sym)
+        self.itersolve = self.solve_everything(nmax, self.bad_guess, self.improv_beam, self.gains, self.data, self.ant_i, self.ant_j, fakeflat, self.Nside, self.noise)
