@@ -407,12 +407,13 @@ class RealArray:
         return fin_vis, fin_beams
 
 
-    def __init__(self, Nside, noise, M):
+    def __init__(self, Nside, noise, n_beam):
         self.Nside = Nside
         self.Nant = Nside**2
         self.Nbase = self.get_num_baselines(Nside)
         self.noise = noise
-        self.n_beam = int(2*M + 1)
+        self.n_beam = n_beam
+        # n_beam = 2*M + 1
         self.gains = np.ones(self.Nant)
         self.create_beams()
     
