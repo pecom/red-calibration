@@ -263,6 +263,11 @@ class RealArray:
         flat_vec = np.concatenate((reals, imags))
         return flat_vec
     
+    def reals_to_imag(self, vec):
+        vlen = int(len(vec)/2)
+        comp_vec = vec[:vlen] + 1j*vec[vlen:]
+        return comp_vec
+    
     def linear_solver_A(self, beams, gains, data, ant_i, ant_j, fndx):
         # Solve for visibilities using a linear method
         big_ans = self.imag_to_reals(data)
@@ -278,6 +283,16 @@ class RealArray:
             bigA[i+data_len, v_size+absv] = np.sign(v)*postage[i].real
         bigCSR = bigA.tocsr()
         return bigCSR, big_ans
+    
+    def vis_solv(self, vis, beams, gains, data, noise, ant_i, ant_j, fndx, fvis):
+        bigA, bigB = self.linear_solver_A(beams, gains, data, ant_i, ant_j, fndx)
+        At = bigA.T
+        sinv = sparse.diags(np.ones(2*fvis))
+        ninv = sparse.diags(noise*np.ones(2*len(data)))
+        lhs = (sinv + At@ninv@bigA)
+        rhs = (At@ninv)@bigB
+        wein_m  = self.reals_to_imag(sparse.linalg.spsolve(lhs, rhs))
+        return wein_m
 
     def vis_solver(self, guess, beams, gains, data, ant_i, ant_j, fndx):
         bigA, bigB = self.linear_solver_A(beams, gains, data, ant_i, ant_j, fndx)
@@ -356,10 +371,12 @@ class RealArray:
         chi, _, score = self.gen_chi2(data, model, noise)
         chis.append(chi)
         scores.append(score)
+        fvis = len(vis_guess)
+        
         for n in range(iter_max):
             
-            new_vis = self.vis_solver(vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx)
-                
+#             new_vis = self.vis_solver(vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx)
+            new_vis = self.vis_solv(vis_guess, beam_guess, gains, data, noise, ant_i, ant_j, flatndx, fvis)
             vis_guess = new_vis
             
             new_beams = self.beam_solver(vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx, Nside)
