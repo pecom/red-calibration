@@ -375,8 +375,11 @@ class RealArray:
         
         for n in range(iter_max):
             
-#             new_vis = self.vis_solver(vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx)
-            new_vis = self.vis_solv(vis_guess, beam_guess, gains, data, noise, ant_i, ant_j, flatndx, fvis)
+            if n%2==1:
+                new_vis = self.vis_solver(vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx)
+            else:
+                new_vis = self.vis_solv(vis_guess, beam_guess, gains, data, noise, ant_i, ant_j, flatndx, fvis)
+                
             vis_guess = new_vis
             
             new_beams = self.beam_solver(vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx, Nside)
