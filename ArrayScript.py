@@ -21,12 +21,12 @@ class RealArray:
         N_bases = 2*Nside**2 - 2*Nside
         return int(N_bases)
     
-    def get_circle_array(self, rad, Nspacing, tap):
+    def get_circle_array(self, rad, Nspacing, tap, gpos):
         x=np.outer(np.linspace(-0.5,+0.5,Nspacing),np.ones(Nspacing))
         y=x.T
         t=np.linspace(0,2.0,100)
         shapefun = lambda t:1-1/(1+np.exp(-2*(t-rad)/tap))
-        beam = shapefun(np.sqrt(x**2+y**2))
+        beam = shapefun(np.sqrt((x - gpos[0])**2+(y - gpos[1])**2))
         return beam
 
     def get_weighted_array(self, alpha, Nspacing, numdraws=1e5):
@@ -439,12 +439,13 @@ class RealArray:
         self.n_beam = n_beam
         # n_beam = 2*M + 1
         self.gains = np.ones(self.Nant)
-        self.create_beams()
+        self.gpos = np.zeros((self.Nant, 2), dtype=np.complex128)
+        self.point_err = np.ones(self.Nant, dtype=np.complex128)
     
     def create_beams(self, rad=.4):
         beam_comp_phase = np.exp(1j*self.rand_phases(self.Nant))
-        basic_beams = np.array([self.get_circle_array(rad, self.n_beam, .05)*beam_comp_phase[i] for i in range(self.Nant)])
-        self.beams = basic_beams
+        new_beams = np.array([self.get_circle_array(rad, self.n_beam, .05, self.gpos[i])*beam_comp_phase[i]*self.point_err[i] for i in range(self.Nant)])
+        self.beams = new_beams
         
     def set_beams(self, beams):
         self.beams = beams
@@ -452,13 +453,8 @@ class RealArray:
     def set_data(self, dat):
         self.data = dat
 
-    def geometry_error(self, pixel_max, axi=None):
-        if axi is not None:
-            for i, b in enumerate(self.beams):
-                self.beams[i] = np.roll(b, np.random.randint(0, pixel_max+1), axis=axi)
-        else:
-            for i, b in enumerate(self.beams):
-                self.beams[i] = np.roll(b, np.random.randint(0, pixel_max+1), axis=np.random.randint(0,2))
+    def geometry_error(self, geom_mag):
+        self.gpos = np.random.normal(0, geom_mag, (self.Nant, 2))
         
     def pointing_error(self, phase_mag):
         px = np.random.normal(0, phase_mag, self.Nant)
@@ -466,11 +462,11 @@ class RealArray:
 
         x = np.outer(np.linspace(-0.5,0.5,self.n_beam),np.ones(self.n_beam))
         y = x.T
-
-        new_beams = np.zeros_like(self.beams)
+        
+        phase_fac = np.zeros((self.Nant, self.n_beam, self.n_beam), dtype=np.complex128)
         for i in range(self.Nant):
-            new_beams[i] = self.beams[i]*np.exp(1j*((x)*px[i]+(y)*py[i]))
-        self.beams = new_beams
+            phase_fac[i] = np.exp(1j*((x)*px[i]+(y)*py[i]))
+        self.point_err = phase_fac
 
     def camera_error(self, eps=1e-5):
         self.beams = self.beams + eps*np.random.random((*self.beams.shape, 2)).view(dtype=np.complex128).reshape(self.beams.shape)

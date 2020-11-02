@@ -6,7 +6,7 @@ if len(sys.argv)==8:
     Nside = int(sys.argv[1])
     M = int(sys.argv[2])
     m = int(sys.argv[3])
-    pixel_offset = int(sys.argv[4])
+    pixel_offset = float(sys.argv[4])
     phi_mag = float(sys.argv[5])
     noise = float(sys.argv[6])
     nmax = int(sys.argv[7])
@@ -14,6 +14,7 @@ if len(sys.argv)==8:
     arr = RealArray(Nside, noise, M)
     arr.geometry_error(pixel_offset)
     arr.pointing_error(phi_mag)
+    arr.create_beams()
     arr.start_data()
     arr.create_fit(m, nmax)
     isolve = arr.itersolve
