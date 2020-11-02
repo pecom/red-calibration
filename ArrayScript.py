@@ -20,6 +20,14 @@ class RealArray:
     def get_num_baselines(self, Nside):
         N_bases = 2*Nside**2 - 2*Nside
         return int(N_bases)
+    
+    def get_circle_array(self, rad, Nspacing, tap):
+        x=np.outer(np.linspace(-0.5,+0.5,Nspacing),np.ones(Nspacing))
+        y=x.T
+        t=np.linspace(0,2.0,100)
+        shapefun = lambda t:1-1/(1+np.exp(-2*(t-rad)/tap))
+        beam = shapefun(np.sqrt(x**2+y**2))
+        return beam
 
     def get_weighted_array(self, alpha, Nspacing, numdraws=1e5):
         # Overlap a circular beam onto a pixelized grid 
@@ -433,10 +441,16 @@ class RealArray:
         self.gains = np.ones(self.Nant)
         self.create_beams()
     
-    def create_beams(self, rad=.8):
+    def create_beams(self, rad=.4):
         beam_comp_phase = np.exp(1j*self.rand_phases(self.Nant))
-        basic_beams = np.array([self.get_weighted_array(rad, self.n_beam, 100)*beam_comp_phase[i] for i in range(self.Nant)])
+        basic_beams = np.array([self.get_circle_array(rad, self.n_beam, .05)*beam_comp_phase[i] for i in range(self.Nant)])
         self.beams = basic_beams
+        
+    def set_beams(self, beams):
+        self.beams = beams
+    
+    def set_data(self, dat):
+        self.data = dat
 
     def geometry_error(self, pixel_max, axi=None):
         if axi is not None:
@@ -445,23 +459,18 @@ class RealArray:
         else:
             for i, b in enumerate(self.beams):
                 self.beams[i] = np.roll(b, np.random.randint(0, pixel_max+1), axis=np.random.randint(0,2))
-    
-    def pointing_error(self, phase):
-        beam_ndx = np.array(np.unravel_index(np.arange(len(self.beams)), (self.Nside, self.Nside)))
-        phase_dphi = phase
         
-        beam_r = int((self.n_beam-1)/2)
-        beam_mesh = self.n_mesh(beam_r)
-        
-        phase_beams = []
-        for i in range(len(beam_ndx[0])):
-            pos_beamy, pos_beamx = np.array(beam_mesh(beam_ndx[:,i]*self.n_beam))/self.n_beam
-            beam_flipped = np.array([pos_beamy[::-1], pos_beamx[:,::-1]])
-            offsets = np.sum(beam_flipped*phase_dphi[:,None,None], axis=0)
-            phase_vec = np.exp(1j*offsets)
-            phase_beams.append(self.beams[i]*phase_vec)
-        phase_beams = np.array(phase_beams)
-        self.beams = phase_beams
+    def pointing_error(self, phase_mag):
+        px = np.random.normal(0, phase_mag, self.Nant)
+        py = np.random.normal(0, phase_mag, self.Nant)
+
+        x = np.outer(np.linspace(-0.5,0.5,self.n_beam),np.ones(self.n_beam))
+        y = x.T
+
+        new_beams = np.zeros_like(self.beams)
+        for i in range(self.Nant):
+            new_beams[i] = self.beams[i]*np.exp(1j*((x)*px[i]+(y)*py[i]))
+        self.beams = new_beams
 
     def camera_error(self, eps=1e-5):
         self.beams = self.beams + eps*np.random.random((*self.beams.shape, 2)).view(dtype=np.complex128).reshape(self.beams.shape)
@@ -475,7 +484,7 @@ class RealArray:
 
     def create_fit(self, outbeam, nmax=100, bguess = None, ibeam=None):
         bshape = (self.Nant, outbeam, outbeam)
-        fakeflat, _, _ = self.create_fake_flatndx(self.Nside, outbeam)
+        fakeflat, ant_i, ant_j = self.create_fake_flatndx(self.Nside, outbeam)
         fakevislen = len(set(np.abs(fakeflat).flatten()))+1
 
         if bguess is not None:
@@ -487,4 +496,4 @@ class RealArray:
         else:
             self.improv_beam = np.random.normal(0, 1, (*bshape, 2)).view(np.complex128).reshape(bshape)
 
-        self.itersolve = self.solve_everything(nmax, self.bad_guess, self.improv_beam, self.gains, self.data, self.ant_i, self.ant_j, fakeflat, self.Nside, self.noise)
+        self.itersolve = self.solve_everything(nmax, self.bad_guess, self.improv_beam, self.gains, self.data, ant_i, ant_j, fakeflat, self.Nside, self.noise)
