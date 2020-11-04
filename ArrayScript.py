@@ -381,8 +381,14 @@ class RealArray:
         scores.append(score)
         fvis = len(vis_guess)
         
-        for n in range(iter_max):
-            
+        n = 0
+    
+        if iter_max != 0:
+            counter = iter_max
+        else:
+            counter = 10
+
+        while counter >= 0:            
             new_vis = self.vis_solv(vis_guess, beam_guess, gains, data, noise, ant_i, ant_j, flatndx, fvis)
             vis_guess = new_vis
             
@@ -394,16 +400,19 @@ class RealArray:
             
             chis.append(chi)
             scores.append(score)
-            if n > 5:
-                if (np.abs(chi - chis[-2]) < chi_eps):
-                    break
-                if score < 1:
-                    break
+            if (np.abs(chi - chis[-2]) < chi_eps):
+                break
+            if score < 1:
+                break
             if n%5==0:
                 print(n, score)
+            if iter_max != 0:
+                counter -= 1
+            n += 1
+            
         chis = np.array(chis)
         scores = np.array(scores)
-        print("Final Iteration:", n, scores)
+        print("Final Iteration:", n, score)
         
         return vis_guess, beam_guess, chis, scores
 
