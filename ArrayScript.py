@@ -302,9 +302,9 @@ class RealArray:
         wein_m  = self.reals_to_imag(sparse.linalg.spsolve(lhs, rhs))
         return wein_m
 
-    def vis_solver(self, guess, beams, gains, data, ant_i, ant_j, fndx):
+    def old_vis_solver(self, guess, beams, gains, data, ant_i, ant_j, fndx):
         bigA, bigB = self.linear_solver_A(beams, gains, data, ant_i, ant_j, fndx)
-        map_sol = sparse.linalg.lsqr(bigA, bigB, atol=1e-9)[0]
+        map_sol = sparse.linalg.lsqr(bigA, bigB)[0]
         v_size = len(guess)
         comb_sol = map_sol[:v_size] + 1j*map_sol[v_size:]
         return comb_sol
@@ -372,7 +372,7 @@ class RealArray:
             new_beams[ant_ndx] = shaped_beam
         return new_beams
 
-    def solve_everything(self, iter_max, vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx, Nside, noise, chi_eps=1):
+    def solve_everything(self, iter_max, vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx, Nside, noise, chi_eps=1, wien=True):
         chis = []
         scores = []
         model = self.flat_model(vis_guess, beam_guess, gains, ant_i, ant_j, flatndx)
@@ -389,7 +389,11 @@ class RealArray:
             counter = 10
 
         while counter >= 0:            
-            new_vis = self.vis_solv(vis_guess, beam_guess, gains, data, noise, ant_i, ant_j, flatndx, fvis)
+            if wien:
+                new_vis = self.vis_solv(vis_guess, beam_guess, gains, data, noise, ant_i, ant_j, flatndx, fvis)
+            else:
+                new_vis = self.old_vis_solver(vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx)
+                
             vis_guess = new_vis
             
             new_beams = self.beam_solver(vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx, Nside)
@@ -487,7 +491,7 @@ class RealArray:
         self.ant_j = ant_j
         self.data_len = len(data)
 
-    def create_fit(self, outbeam, nmax=100, bguess = None, ibeam=None):
+    def create_fit(self, outbeam, nmax=100, bguess = None, ibeam=None, wien=True):
         bshape = (self.Nant, outbeam, outbeam)
         fakeflat, ant_i, ant_j = self.create_fake_flatndx(self.Nside, outbeam)
         fakevislen = len(set(np.abs(fakeflat).flatten()))+1
@@ -501,4 +505,4 @@ class RealArray:
         else:
             self.improv_beam = np.random.normal(0, 1, (*bshape, 2)).view(np.complex128).reshape(bshape)
 
-        self.itersolve = self.solve_everything(nmax, self.bad_guess, self.improv_beam, self.gains, self.data, ant_i, ant_j, fakeflat, self.Nside, self.noise)
+        self.itersolve = self.solve_everything(nmax, self.bad_guess, self.improv_beam, self.gains, self.data, ant_i, ant_j, fakeflat, self.Nside, self.noise, wien=wien)
