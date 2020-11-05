@@ -484,9 +484,15 @@ class RealArray:
     def camera_error(self, eps=1e-5):
         self.beams = self.beams + eps*np.random.random((*self.beams.shape, 2)).view(dtype=np.complex128).reshape(self.beams.shape)
 
-    def start_data(self):
+    def start_data(self, norm=True):
         _, data, ant_i, ant_j, _, _, _, _, _, _, _ = self.make_data_grid(self.Nside, self.gains, self.beams, noise=self.noise)
-        self.data = data
+        if norm:
+            dstd = np.std(data)
+            self.data = data/dstd
+            self.noise = self.noise/dstd
+        else:
+            self.data = data
+
         self.ant_i = ant_i
         self.ant_j = ant_j
         self.data_len = len(data)
