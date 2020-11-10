@@ -2,19 +2,22 @@ from ArrayScript import RealArray
 import numpy as np
 import sys
 
-if len(sys.argv)==8:
+if len(sys.argv)==9:
     Nside = int(sys.argv[1])
     M = int(sys.argv[2])
     m = int(sys.argv[3])
     pixel_offset = float(sys.argv[4])
     phi_mag = float(sys.argv[5])
-    noise = float(sys.argv[6])
-    nmax = int(sys.argv[7])
+    snr = float(sys.argv[6])
+    snr_type = str(sys.argv[7])
+    nmax = int(sys.argv[8])
+    print(Nside, M, m, pixel_offset, phi_mag, snr, snr_type, nmax)
 
-    arr = RealArray(Nside, noise, M)
+    arr = RealArray(Nside, snr, M, snr_type)
     arr.geometry_error(pixel_offset)
     arr.pointing_error(phi_mag)
     arr.create_beams()
+    print("Made beams")
     arr.start_data()
     arr.create_fit(m, nmax)
     isolve = arr.itersolve
@@ -39,7 +42,6 @@ elif len(sys.argv)==6:
     Nside = int(sys.argv[1])
     M = int(sys.argv[2])
     m = int(sys.argv[3])
-    noise = float(sys.argv[4])
     nmax = int(sys.argv[5])
 
     arr = RealArray(Nside, noise, M)
