@@ -21,6 +21,7 @@ if len(sys.argv)==9:
     arr.start_data()
     arr.create_fit(m, nmax)
     isolve = arr.itersolve
+    print(Nside, M, m, pixel_offset, phi_mag, snr, snr_type, nmax)
     fname = '_'.join(sys.argv[1:])
     dat = arr.data
 
