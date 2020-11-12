@@ -8,7 +8,7 @@ M = 29
 m = 3
 snr_vals = [1e-3, 1, 10, 12.5, 25, 50, 100]
 
-sample_array = RealArray(Nside, 29, True)
+sample_array = RealArray(Nside, 29, "True")
 sample_array.geometry_error(error_mag)
 sample_array.pointing_error(error_mag)
 sample_array.create_beams()
