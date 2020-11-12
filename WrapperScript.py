@@ -13,12 +13,13 @@ if len(sys.argv)==9:
     nmax = int(sys.argv[8])
     print(Nside, M, m, pixel_offset, phi_mag, snr, snr_type, nmax)
 
-    arr = RealArray(Nside, snr, M, snr_type)
+    arr = RealArray(Nside, M, snr_type)
     arr.geometry_error(pixel_offset)
     arr.pointing_error(phi_mag)
     arr.create_beams()
     print("Made beams")
-    arr.start_data()
+    arr.errorless_data()
+    arr.add_noise(snr)
     arr.create_fit(m, nmax)
     isolve = arr.itersolve
     print(Nside, M, m, pixel_offset, phi_mag, snr, snr_type, nmax)

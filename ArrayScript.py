@@ -161,7 +161,7 @@ class RealArray:
         ant_j = np.array(ant_j)
         return flat, ant_i, ant_j
 
-    def make_data_grid(self, Nside, gains, beams, noise=0.1, verbose=True):
+    def make_data_grid(self, Nside, gains, beams, noise=0.1, verbose=False):
         
         Nant = Nside**2
         Nbase = self.get_num_baselines(Nside)
@@ -265,7 +265,7 @@ class RealArray:
     
     def vec_chi2(self, data, pred, nv):
         chitwo = (np.abs((data-pred)**2)/(nv**2)).sum().real
-        dof = len(data)*2
+        dof = self.dof
         return chitwo, dof, chitwo/dof
 
     def imag_to_reals(self, vec):
@@ -377,7 +377,7 @@ class RealArray:
             new_beams[ant_ndx] = shaped_beam
         return new_beams
 
-    def solve_everything(self, iter_max, vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx, Nside, noise, chi_eps=1, score_stop=.4, wien=True):
+    def solve_everything(self, iter_max, vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx, Nside, noise, chi_eps=1, score_stop=.5, wien=True, verbose=True):
         chis = []
         scores = []
         model = self.flat_model(vis_guess, beam_guess, gains, ant_i, ant_j, flatndx)
@@ -413,8 +413,9 @@ class RealArray:
                 break
             if score < score_stop:
                 break
-            if n%5==0:
-                print(n, score)
+            if verbose:
+                if n%100==0:
+                    print(n, score)
             if iter_max != 0:
                 counter -= 1
             n += 1
@@ -465,13 +466,13 @@ class RealArray:
         variances = np.array(variances)
         return np.sqrt(np.mean(variances))
 
-    def __init__(self, Nside, snr, n_beam, snr_type):
+    def __init__(self, Nside, n_beam, snr_type):
         self.Nside = Nside
         self.Nant = Nside**2
         self.Nbase = self.get_num_baselines(Nside)
-        self.snr = snr
         self.n_beam = n_beam
         self.snr_type = snr_type
+        self.dof = (Nside**2)*(Nside**2 - 1)
         # n_beam = 2*M + 1
         self.gains = np.ones(self.Nant)
         self.gpos = np.zeros((self.Nant, 2), dtype=np.complex128)
@@ -507,31 +508,35 @@ class RealArray:
 
     def camera_error(self, eps=1e-5):
         self.beams = self.beams + eps*np.random.random((*self.beams.shape, 2)).view(dtype=np.complex128).reshape(self.beams.shape)
-
-    def start_data(self):
-        noise_pervisib = self.rms/self.snr
+        
+    def errorless_data(self):
         _, data, ant_i, ant_j, visndx, _, _, _, _, _, _ = self.make_data_grid(self.Nside, self.gains, self.beams, noise=0)
         data_len = len(data)
+        self.errorless = data
+        self.ant_i = ant_i
+        self.ant_j = ant_j
+        self.data_len = data_len
+        self.visndx = visndx
+
+    def add_noise(self, snr):
+        self.snr = snr
+        
+        noise_pervisib = self.rms/snr
+        data_len = len(self.errorless)
         
         if self.snr_type=="True":
-            self.snr_count_factor = np.array([np.sqrt((visndx==v).sum()) for v in visndx])
+            self.snr_count_factor = np.array([np.sqrt((visndx==v).sum()) for v in self.visndx])
             chin = noise_pervisib*self.snr_count_factor
             nvec = np.array([np.random.normal(0, c, 2).view(np.complex128)[0] for c in chin])
-#             self.chin = noise_pervisib*snr_count_factor
-#             self.nvec = np.array([np.random.normal(0, c, 2).view(np.complex128)[0] for c in self.chin])
         else:
             chin = np.ones(data_len, dtype=np.complex128)*noise_pervisib
             nvec = np.random.normal(0, noise_pervisib, (data_len, 2)).view(np.complex128).flatten()
-#             self.chin = np.ones(data_len, dtype=np.complex128)*noise_pervisib
-#             self.nvec = np.random.normal(0, noise_pervisib, (data_len, 2)).view(np.complex128).flatten()
         
         self.chin = chin
         self.nvec = nvec
         
-        self.data = data + nvec
-        self.ant_i = ant_i
-        self.ant_j = ant_j
-        self.data_len = data_len
+        self.data = self.errorless + nvec
+        
 
     def create_fit(self, outbeam, nmax=100, bguess = None, ibeam=None, wien=True):
         bshape = (self.Nant, outbeam, outbeam)
@@ -552,9 +557,10 @@ class RealArray:
             print('Guessing beams')
             ib = np.random.normal(0, 1, (*bshape, 2)).view(np.complex128).reshape(bshape)
             self.improv_beam = ib
-            
+        
+        fit_params = len(self.bad_guess.flatten()) + len(self.improv_beam.flatten())
+        self.dof = (self.Nside**2)*(self.Nside**2 - 1) - 2*fit_params
         iscore = self.flat_model(self.bad_guess, self.improv_beam, self.gains, ant_i, ant_j, fakeflat)
         print("Original guess, ", self.vec_chi2(self.data, iscore, self.chin))
 
-        self.itersolve = self.solve_everything(nmax, self.bad_guess, self.improv_beam, self.gains, self.data, ant_i, ant_j, fakeflat,\
-                                               self.Nside, self.chin, wien=wien)
+        self.itersolve = self.solve_everything(nmax, self.bad_guess, self.improv_beam, self.gains, self.data, ant_i, ant_j, fakeflat, self.Nside, self.chin, wien=wien)
