@@ -525,7 +525,7 @@ class RealArray:
         data_len = len(self.errorless)
         
         if self.snr_type=="True":
-            self.snr_count_factor = np.array([np.sqrt((visndx==v).sum()) for v in self.visndx])
+            self.snr_count_factor = np.array([np.sqrt((self.visndx==v).sum()) for v in self.visndx])
             chin = noise_pervisib*self.snr_count_factor
             nvec = np.array([np.random.normal(0, c, 2).view(np.complex128)[0] for c in chin])
         else:
