@@ -521,35 +521,29 @@ class RealArray:
         self.snr_count_factor = np.array([np.sqrt((self.visndx==v).sum()) for v in self.visndx])
         chin = self.rms*self.snr_count_factor
         nvec = np.array([np.random.normal(0, c, 2).view(np.complex128)[0] for c in chin])
-        self.chin = chin
+        self.bchin = chin
         self.bn = nvec
 
     def add_noise(self, snr):
         self.snr = snr
         nvec = self.bn/snr
-        self.chin *= 1/snr
+        self.chin = self.bchin/snr
         self.data = self.errorless + nvec
         
 
-    def create_fit(self, outbeam, nmax=100, bguess = None, ibeam=None, wien=True):
+    def create_fit(self, outbeam, nmax=100, wien=True):
         bshape = (self.Nant, outbeam, outbeam)
         fakeflat, ant_i, ant_j = self.create_fake_flatndx(self.Nside, outbeam)
         fakevislen = len(set(np.abs(fakeflat).flatten()))+1
 
-        if bguess is not None:
-            bg = bguess
-            self.bad_guess = bguess
-        else:
-            print('Guessing visibility')
-            bg = np.random.normal(0, 1, (fakevislen, 2)).view(np.complex128).flatten()
-            self.bad_guess = bg
-        if ibeam is not None:
-            ib = ibeam
-            self.improv_beam = ibeam
-        else:
-            print('Guessing beams')
-            ib = np.random.normal(0, 1, (*bshape, 2)).view(np.complex128).reshape(bshape)
-            self.improv_beam = ib
+
+        print('Guessing visibility')
+        bg = np.random.normal(0, 1, (fakevislen, 2)).view(np.complex128).flatten()
+        self.bad_guess = bg
+        
+        print('Guessing beams')
+        ib = np.random.normal(0, 1, (*bshape, 2)).view(np.complex128).reshape(bshape)
+        self.improv_beam = ib
         
         fit_params = len(self.bad_guess.flatten()) + len(self.improv_beam.flatten())
         self.dof = (self.Nside**2)*(self.Nside**2 - 1) - 2*fit_params
