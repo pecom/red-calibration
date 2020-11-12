@@ -466,12 +466,11 @@ class RealArray:
         variances = np.array(variances)
         return np.sqrt(np.mean(variances))
 
-    def __init__(self, Nside, n_beam, snr_type):
+    def __init__(self, Nside, n_beam):
         self.Nside = Nside
         self.Nant = Nside**2
         self.Nbase = self.get_num_baselines(Nside)
         self.n_beam = n_beam
-        self.snr_type = snr_type
         self.dof = (Nside**2)*(Nside**2 - 1)
         # n_beam = 2*M + 1
         self.gains = np.ones(self.Nant)
@@ -517,24 +516,18 @@ class RealArray:
         self.ant_j = ant_j
         self.data_len = data_len
         self.visndx = visndx
+        
+    def base_noise(self):
+        self.snr_count_factor = np.array([np.sqrt((self.visndx==v).sum()) for v in self.visndx])
+        chin = self.rms*self.snr_count_factor
+        nvec = np.array([np.random.normal(0, c, 2).view(np.complex128)[0] for c in chin])
+        self.chin = chin
+        self.bn = nvec
 
     def add_noise(self, snr):
         self.snr = snr
-        
-        noise_pervisib = self.rms/snr
-        data_len = len(self.errorless)
-        
-        if self.snr_type=="True":
-            self.snr_count_factor = np.array([np.sqrt((self.visndx==v).sum()) for v in self.visndx])
-            chin = noise_pervisib*self.snr_count_factor
-            nvec = np.array([np.random.normal(0, c, 2).view(np.complex128)[0] for c in chin])
-        else:
-            chin = np.ones(data_len, dtype=np.complex128)*noise_pervisib
-            nvec = np.random.normal(0, noise_pervisib, (data_len, 2)).view(np.complex128).flatten()
-        
-        self.chin = chin
-        self.nvec = nvec
-        
+        nvec = self.bn/snr
+        self.chin *= 1/snr
         self.data = self.errorless + nvec
         
 
