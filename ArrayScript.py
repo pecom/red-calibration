@@ -300,7 +300,8 @@ class RealArray:
         bigA, bigB = self.linear_solver_A(beams, gains, data, ant_i, ant_j, fndx)
         At = bigA.T
         sinv = sparse.diags(np.ones(2*fvis))
-        doubled_nv = np.concatenate((noise, noise))
+        inv_noise = 1/noise
+        doubled_nv = np.concatenate((inv_noise, inv_noise))
         ninv = sparse.diags(doubled_nv)
         lhs = (sinv + At@ninv@bigA)
         rhs = (At@ninv)@bigB
