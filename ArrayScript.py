@@ -533,18 +533,24 @@ class RealArray:
         self.chin = self.bchin/snr
         self.data = self.errorless + nvec
 
-    def create_fit(self, outbeam, nmax=100, wien=True):
+    def create_fit(self, outbeam, nmax=100, wien=True, bg=None, ib=None):
         bshape = (self.Nant, outbeam, outbeam)
         fakeflat, ant_i, ant_j = self.create_fake_flatndx(self.Nside, outbeam)
         fakevislen = len(set(np.abs(fakeflat).flatten()))+1
 
 #         print('Guessing visibility')
-        bg = np.random.normal(0, 1, (fakevislen, 2)).view(np.complex128).flatten()
-        self.bad_guess = bg
+        if bg is not None:
+            self.bad_guess = bg
+        else:
+            bg = np.random.normal(0, 1, (fakevislen, 2)).view(np.complex128).flatten()
+            self.bad_guess = bg
         
 #         print('Guessing beams')
-        ib = np.random.normal(0, 1, (*bshape, 2)).view(np.complex128).reshape(bshape)
-        self.improv_beam = ib
+        if ib is not None:
+            self.improv_beam = ib
+        else:
+            ib = np.random.normal(0, 1, (*bshape, 2)).view(np.complex128).reshape(bshape)
+            self.improv_beam = ib
         
         fit_params = len(self.bad_guess.flatten()) + len(self.improv_beam.flatten())
         self.dof = (self.Nside**2)*(self.Nside**2 - 1) - 2*fit_params
