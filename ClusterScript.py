@@ -21,7 +21,7 @@ comm.Bcast(chin, root=0)
 arr = RealArray(10, 3)
 arr.set_data(data)
 arr.set_chin(chin)
-arr.create_fit(3, 10)
+arr.create_fit(3, 0)
 isolve = arr.itersolve
 fin_score = isolve[-1][-1]
 
