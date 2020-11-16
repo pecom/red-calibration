@@ -538,11 +538,11 @@ class RealArray:
         fakeflat, ant_i, ant_j = self.create_fake_flatndx(self.Nside, outbeam)
         fakevislen = len(set(np.abs(fakeflat).flatten()))+1
 
-        print('Guessing visibility')
+#         print('Guessing visibility')
         bg = np.random.normal(0, 1, (fakevislen, 2)).view(np.complex128).flatten()
         self.bad_guess = bg
         
-        print('Guessing beams')
+#         print('Guessing beams')
         ib = np.random.normal(0, 1, (*bshape, 2)).view(np.complex128).reshape(bshape)
         self.improv_beam = ib
         
