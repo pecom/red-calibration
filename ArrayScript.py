@@ -488,6 +488,9 @@ class RealArray:
     def set_beams(self, beams):
         self.beams = beams
     
+    def set_chin(self, chin):
+        self.chin = chin
+    
     def set_data(self, dat):
         self.data = dat
 
@@ -519,8 +522,7 @@ class RealArray:
         self.visndx = visndx
         
     def base_noise(self):
-        self.snr_count_factor = np.array([np.sqrt((self.visndx==v).sum()) for v in self.visndx])
-        chin = self.rms*self.snr_count_factor
+        chin = self.rms
         nvec = np.array([np.random.normal(0, c, 2).view(np.complex128)[0] for c in chin])
         self.bchin = chin
         self.bn = nvec
@@ -530,13 +532,11 @@ class RealArray:
         nvec = self.bn/snr
         self.chin = self.bchin/snr
         self.data = self.errorless + nvec
-        
 
     def create_fit(self, outbeam, nmax=100, wien=True):
         bshape = (self.Nant, outbeam, outbeam)
         fakeflat, ant_i, ant_j = self.create_fake_flatndx(self.Nside, outbeam)
         fakevislen = len(set(np.abs(fakeflat).flatten()))+1
-
 
         print('Guessing visibility')
         bg = np.random.normal(0, 1, (fakevislen, 2)).view(np.complex128).flatten()
