@@ -18,7 +18,7 @@ if rank == 0:
 else:
     data = np.empty(data_len, dtype=np.complex128)
     chin = np.empty(data_len, dtype=np.complex128)
-#    beam = np.empty((100, 3, 3), dtype=np.complex128)
+#    beam = np.empty((Nside**2, 3, 3), dtype=np.complex128)
     
 comm.Bcast(data, root=0)
 comm.Bcast(chin, root=0)
