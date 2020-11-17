@@ -92,7 +92,7 @@ class RealArray:
         b2n = {}
         n2true = {}
         true2n = {}
-        for i in range(new_size):
+        for i in range(1, new_size):
             xi,yi = np.unravel_index(i, new_shape)
             if poss_index[xi,yi] == 0:
                 continue
@@ -134,12 +134,13 @@ class RealArray:
     def create_fake_flatndx(self, Nside, n_beam):
         Nant = Nside**2
         conv_beamrad = 2*n_beam - 1
+        beam_rad = int((n_beam-1)/2)+1
         n2b, b2n, n2t, t2n, _ = self.make_visibilities(Nside, n_beam)
         datandx = []
         ant_i = []
         ant_j = []
         
-        mesh = self.n_mesh(n_beam - 1)
+        mesh = self.n_mesh(beam_rad)
         
         for i in range(Nant):
             xi,yi = np.unravel_index(i, (Nside, Nside))
@@ -349,6 +350,7 @@ class RealArray:
         symbeam = int((n_beam + 1)/2)
         symconv = signal.convolve(np.ones((symbeam, symbeam), dtype=np.complex128), np.ones((symbeam, symbeam), dtype=np.complex128)).flatten()
         center_ofsymbeam = int((n_beam**2 - 1)/2)
+        sym_hyper = 50
 
         for i,v in enumerate(beam_guess):
             matrix_beams[i] = self.generic_block_toep(v)
@@ -371,6 +373,11 @@ class RealArray:
                 beam_solver[i] = self.conjugate_visib(vis, flatndx[ant_filter][i])[None,:] @ np.conjugate(matrix_beams[ant_j[ant_filter]][i][::-1, ::-1])*gains[ant_i[ant_filter]][i]*np.conjugate(gains[ant_j[ant_filter]][i])
             for j in range(np.sum(jant_filter)):
                 beam_solver[sum_ants + j] = (np.conjugate(self.conjugate_visib(vis, flatndx[jant_filter][j])[None,:]) @ np.conjugate(matrix_beams[ant_i[jant_filter]][j]))[::-1,::-1]*gains[ant_j[jant_filter]][j]*np.conjugate(gains[ant_i[jant_filter]][j])
+                
+            jsymline = np.zeros(n_beam**2, dtype=np.complex128)
+            jsymline[center_ofsymbeam] = 1*sym_hyper
+            beam_solver = np.concatenate((beam_solver, jsymline[None,:]))
+            rhs_vis = np.concatenate((rhs_vis, [sym_hyper]))
 
             zerobeam = optimize.lsq_linear(beam_solver, rhs_vis).x
             shaped_beam = zerobeam.reshape((n_beam, n_beam))
@@ -522,7 +529,7 @@ class RealArray:
         self.visndx = visndx
         
     def base_noise(self):
-        chin = self.rms
+        chin = np.ones(self.data_len)*self.rms
         nvec = np.array([np.random.normal(0, c, 2).view(np.complex128)[0] for c in chin])
         self.bchin = chin
         self.bn = nvec
@@ -552,8 +559,8 @@ class RealArray:
             ib = np.random.normal(0, 1, (*bshape, 2)).view(np.complex128).reshape(bshape)
             self.improv_beam = ib
         
-        fit_params = len(self.bad_guess.flatten()) + len(self.improv_beam.flatten())
-        self.dof = (self.Nside**2)*(self.Nside**2 - 1) - 2*fit_params
+        fit_params = fakevislen - 1 + len(self.improv_beam.flatten())
+        self.dof = self.Nside**4 - self.Nside**2 - 2*fit_params
         iscore = self.flat_model(self.bad_guess, self.improv_beam, self.gains, ant_i, ant_j, fakeflat)
         print("Original guess, ", self.vec_chi2(self.data, iscore, self.chin))
 
