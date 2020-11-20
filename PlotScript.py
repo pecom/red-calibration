@@ -1,12 +1,14 @@
 from ArrayScript import RealArray
 import numpy as np
 import sys
+import pickle
 
 Nside = int(sys.argv[1])
 error_mag = float(sys.argv[2])
 M = 29
 m = 3
-snr_vals = [1e-3, 1e-1, 1, 10, 12.5, 25, 50]
+# snr_vals = [1e-3, 1e-1, 1, 10, 12.5, 25, 50]
+snr_vals = [1, 10, 100, 1e3, 1e4]
 
 sample_array = RealArray(Nside, 29)
 sample_array.geometry_error(error_mag)
@@ -16,6 +18,7 @@ sample_array.errorless_data()
 sample_array.base_noise()
 fin_scores= []
 ns = []
+file_name = 'Nside'+str(Nside)+'_Error'+str(error_mag)
 for snr in snr_vals:
     sample_array.add_noise(snr)
     sample_array.create_fit(3, 0)
@@ -24,10 +27,13 @@ for snr in snr_vals:
     fin_chi = chi[-1]
     iternum = len(chi)
     ns.append(iternum)
+    fname = "plot_pickle_"+file_name+"_snr"+str(snr) + ".obj"
+    pick_file = open('./data/' + fname, 'wb')
+    pickle.dump(sample_array, pick_file)
+    pick_file.close()
     fin_scores.append(fin_chi)
     print(Nside, M, m, error_mag, error_mag, snr)
     
-file_name = 'Nside'+str(Nside)+'_Error'+str(error_mag)
 scores = np.array(fin_scores)
 snrs = np.array(snr_vals)
 ns = np.array(ns)

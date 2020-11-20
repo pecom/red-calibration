@@ -373,11 +373,6 @@ class RealArray:
                 beam_solver[i] = self.conjugate_visib(vis, flatndx[ant_filter][i])[None,:] @ np.conjugate(matrix_beams[ant_j[ant_filter]][i][::-1, ::-1])*gains[ant_i[ant_filter]][i]*np.conjugate(gains[ant_j[ant_filter]][i])
             for j in range(np.sum(jant_filter)):
                 beam_solver[sum_ants + j] = (np.conjugate(self.conjugate_visib(vis, flatndx[jant_filter][j])[None,:]) @ np.conjugate(matrix_beams[ant_i[jant_filter]][j]))[::-1,::-1]*gains[ant_j[jant_filter]][j]*np.conjugate(gains[ant_i[jant_filter]][j])
-                
-            jsymline = np.zeros(n_beam**2, dtype=np.complex128)
-            jsymline[center_ofsymbeam] = 1*sym_hyper
-            beam_solver = np.concatenate((beam_solver, jsymline[None,:]))
-            rhs_vis = np.concatenate((rhs_vis, [sym_hyper]))
 
             zerobeam = optimize.lsq_linear(beam_solver, rhs_vis).x
             shaped_beam = zerobeam.reshape((n_beam, n_beam))
@@ -385,7 +380,7 @@ class RealArray:
             new_beams[ant_ndx] = shaped_beam
         return new_beams
 
-    def solve_everything(self, iter_max, vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx, Nside, noise, chi_eps=1, score_stop=.5, wien=True, verbose=True):
+    def solve_everything(self, iter_max, vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx, Nside, noise, chi_eps=100, score_stop=.5, wien=True, verbose=True):
         chis = []
         scores = []
         model = self.flat_model(vis_guess, beam_guess, gains, ant_i, ant_j, flatndx)
@@ -511,6 +506,8 @@ class RealArray:
         x = np.outer(np.linspace(-0.5,0.5,self.n_beam),np.ones(self.n_beam))
         y = x.T
         
+        self.px = px
+        self.py = py
         phase_fac = np.zeros((self.Nant, self.n_beam, self.n_beam), dtype=np.complex128)
         for i in range(self.Nant):
             phase_fac[i] = np.exp(1j*((x)*px[i]+(y)*py[i]))

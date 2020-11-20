@@ -1,30 +1,36 @@
 from ArrayScript import RealArray
 import numpy as np
 import sys
+import pickle
 
-if len(sys.argv)==9:
+if len(sys.argv)==8:
     Nside = int(sys.argv[1])
     M = int(sys.argv[2])
     m = int(sys.argv[3])
     pixel_offset = float(sys.argv[4])
     phi_mag = float(sys.argv[5])
     snr = float(sys.argv[6])
-    snr_type = str(sys.argv[7])
-    nmax = int(sys.argv[8])
-    print(Nside, M, m, pixel_offset, phi_mag, snr, snr_type, nmax)
+    nmax = int(sys.argv[7])
+    print(Nside, M, m, pixel_offset, phi_mag, snr, nmax)
 
-    arr = RealArray(Nside, M, snr_type)
+    arr = RealArray(Nside, M)
     arr.geometry_error(pixel_offset)
     arr.pointing_error(phi_mag)
     arr.create_beams()
     print("Made beams")
     arr.errorless_data()
+    arr.base_noise()
     arr.add_noise(snr)
     arr.create_fit(m, nmax)
     isolve = arr.itersolve
     print(Nside, M, m, pixel_offset, phi_mag, snr, snr_type, nmax)
     fname = '_'.join(sys.argv[1:])
     dat = arr.data
+    
+    pickle_name = fname+"_pickle.obj"
+    pick_file = open('./data/' + pickle_name, 'wb')
+    pickle.dump(arr, pick_file)
+    pick_file.close()
 
     np.save('./data/'+fname+'_data', dat)
     np.save('./data/'+fname+'_vis', isolve[0])
