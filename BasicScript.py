@@ -17,8 +17,8 @@ class BasicArray:
     def __init__(self, Nside):
         self.Nside = Nside
         self.Nant = Nside**2
-        self.gains = self.make_gains(Nside)
-        self.data = self.make_data(Nside, self.gains)
+#         self.gains = self.make_gains(Nside)
+#         self.data = self.make_data(Nside, self.gains)
 
     def make_guesses(self):
         self.gain_guess = np.random.normal(0, 1, (self.Nant, 2)).view(dtype=np.complex128).flatten()
@@ -102,6 +102,12 @@ class BasicArray:
         dof = len(data)*2
         return chi2, dof
     
+    def vchi2(self, data, gains, vis, ant_i, ant_j, visndx, noise):
+        pred = self.make_pred(gains, vis, ant_i, ant_j, visndx)
+        chi2 = (np.abs((data - pred)**2)/(noise**2)).sum().real
+        dof = len(data)*2
+        return chi2, dof
+    
     def chimincal(self, iter_max, data, g0, v0, ant_i, ant_j, visndx, noise=0.1, delta=0.4, epsilon=1e-5):
         chiscores = []
         garr = g0.copy()
@@ -110,9 +116,8 @@ class BasicArray:
         Nant = len(g0)
         Nbase = len(v0)
 
-        chi, dof = self.chi2(data, garr, varr, ant_i, ant_j, visndx)
+        chi, dof = self.vchi2(data, garr, varr, ant_i, ant_j, visndx, noise)
         chiscores.append(chi/dof)
-
 
         for n in range(iter_max):
             gprime = np.zeros(Nant, dtype=np.complex128)
@@ -131,18 +136,20 @@ class BasicArray:
 
             vprime = np.zeros(Nbase, dtype=np.complex128)
             for i in range(Nbase):
+
                 indxs = np.where(visndx==i)
                 numer = (data[indxs]*np.conj(garr[ant_i[indxs]])*garr[ant_j[indxs]]).sum()
                 denom = (np.abs(garr[ant_i[indxs]]*np.conj(garr[ant_j[indxs]]))**2).sum()
                 vprime[i] = self.zero_weight(numer, denom)
 
             varr = (1-delta)*varr + delta*vprime
+    #         varr = vprime
 
             gscale = N/np.mean(np.abs(garr))
             garr *= gscale
             varr *= (1/gscale)**2
 
-            chi, dof = self.chi2(data, garr, varr, ant_i, ant_j, visndx)
+            chi, dof = self.vchi2(data, garr, varr, ant_i, ant_j, visndx, noise)
             chiscores.append(chi/dof)
             if n > 20:
                 if np.abs(chiscores[-2] - chiscores[-1]) < epsilon:

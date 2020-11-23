@@ -10,6 +10,7 @@ from scipy import signal
 from scipy import linalg
 from functools import reduce
 from collections import defaultdict
+from BasicScript import BasicArray
 
 class RealArray:
 
@@ -380,7 +381,7 @@ class RealArray:
             new_beams[ant_ndx] = shaped_beam
         return new_beams
 
-    def solve_everything(self, iter_max, vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx, Nside, noise, chi_eps=100, score_stop=.5, wien=True, verbose=True):
+    def solve_everything(self, iter_max, vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx, Nside, noise, chi_eps=1, score_stop=.5, wien=True, verbose=True):
         chis = []
         scores = []
         model = self.flat_model(vis_guess, beam_guess, gains, ant_i, ant_j, flatndx)
@@ -536,11 +537,26 @@ class RealArray:
         nvec = self.bn/snr
         self.chin = self.bchin/snr
         self.data = self.errorless + nvec
+        
+    def compare_to_red(self):
+        barray = BasicArray(10)
+        beam_gain_guess = np.random.normal(0, 1, (self.Nant, 2)).view(np.complex128).flatten()
+        vis_guess = np.random.normal(0, 1, (self.fakevislen, 2)).view(np.complex128).flatten()
+        chig, chiv, c, n = barray.chimincal(100, self.data, beam_gain_guess, vis_guess, self.fanti, self.fantj, self.mid_flat, delta=.4, noise=self.chin)
+        print("Red cal: ", c[-1])
+        self.red_chis = c
 
     def create_fit(self, outbeam, nmax=100, wien=True, bg=None, ib=None):
         bshape = (self.Nant, outbeam, outbeam)
         fakeflat, ant_i, ant_j = self.create_fake_flatndx(self.Nside, outbeam)
         fakevislen = len(set(np.abs(fakeflat).flatten()))+1
+        self.fakevislen = fakevislen
+        self.fanti = ant_i
+        self.fantj = ant_j
+        
+        dvec_len = len(fakeflat[0])
+        mid_ndx = int((dvec_len-1)/2)
+        self.mid_flat = fakeflat[:,mid_ndx]
 
 #         print('Guessing visibility')
         if bg is not None:
