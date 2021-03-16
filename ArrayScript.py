@@ -390,6 +390,7 @@ class RealArray:
         scores.append(score)
         fvis = len(vis_guess)
         
+        alpha = 1
         n = 0
     
         if iter_max != 0:
@@ -397,16 +398,21 @@ class RealArray:
         else:
             counter = 10
 
-        while counter >= 0:            
+        while counter >= 0:      
+            
             if wien:
                 new_vis = self.vis_solv(vis_guess, beam_guess, gains, data, noise, ant_i, ant_j, flatndx, fvis)
             else:
                 new_vis = self.old_vis_solver(vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx)
-                
-            vis_guess = new_vis
+            
+            dvis = new_vis - vis_guess
+            vis_guess = vis_guess + alpha*dvis
+#             vis_guess = new_vis
             
             new_beams = self.beam_solver(vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx, Nside)
-            beam_guess = new_beams
+            dbeam = new_beams - beam_guess
+            beam_guess = beam_guess + alpha*dbeam
+#             beam_guess = new_beams
             
             model = self.flat_model(vis_guess, beam_guess, gains, ant_i, ant_j, flatndx)
             chi, _, score = self.vec_chi2(data, model, noise)
@@ -485,7 +491,8 @@ class RealArray:
         beam_comp_phase = np.exp(1j*self.rand_phases(self.Nant))
         new_beams = np.array([self.get_circle_array(rad, self.n_beam, .05, self.gpos[i])*beam_comp_phase[i]*self.point_err[i] for i in range(self.Nant)])
         self.beams = new_beams
-        rms = self.guess_rms(new_beams, 100, 75)
+        fake_beams = np.array([self.get_circle_array(rad, self.n_beam, .05, [0,0]) for i in range(self.Nant)])
+        rms = self.guess_rms(fake_beams, 100, 75)
         self.rms = rms
         
     def set_beams(self, beams):

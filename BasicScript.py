@@ -97,6 +97,7 @@ class BasicArray:
         return pred
 
     def chi2(self, data, gains, vis, ant_i, ant_j, visndx, noise=0.1):
+        fit_params = len(gains.flatten()) + len(vis.flatten())
         pred = self.make_pred(gains, vis, ant_i, ant_j, visndx)
         chi2 = np.abs((data - pred)**2).sum()/(noise**2)
         dof = len(data)*2
@@ -105,7 +106,7 @@ class BasicArray:
     def vchi2(self, data, gains, vis, ant_i, ant_j, visndx, noise):
         pred = self.make_pred(gains, vis, ant_i, ant_j, visndx)
         chi2 = (np.abs((data - pred)**2)/(noise**2)).sum().real
-        dof = len(data)*2
+        dof = 2*(len(data)- len(vis) - len(gains))
         return chi2, dof
     
     def chimincal(self, iter_max, data, g0, v0, ant_i, ant_j, visndx, noise=0.1, delta=0.4, epsilon=1e-5):
