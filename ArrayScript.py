@@ -545,12 +545,16 @@ class RealArray:
         self.chin = self.bchin/snr
         self.data = self.errorless + nvec
         
-    def compare_to_red(self):
+    def compare_to_red(self, gain_guess=None):
         barray = BasicArray(10)
-        beam_gain_guess = np.random.normal(0, 1, (self.Nant, 2)).view(np.complex128).flatten()
+        if gain_guess is not None:
+            beam_gain_guess = gain_guess
+        else:
+            beam_gain_guess = np.random.normal(0, 1, (self.Nant, 2)).view(np.complex128).flatten()
         vis_guess = np.random.normal(0, 1, (self.fakevislen, 2)).view(np.complex128).flatten()
         chig, chiv, c, n = barray.chimincal(100, self.data, beam_gain_guess, vis_guess, self.fanti, self.fantj, self.mid_flat, delta=.4, noise=self.chin)
         print("Red cal: ", c[-1])
+        self.red_chig = chig
         self.red_chis = c
 
     def create_fit(self, outbeam, nmax=100, wien=True, bg=None, ib=None):
