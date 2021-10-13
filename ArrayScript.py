@@ -17,6 +17,10 @@ class RealArray:
     rand_phases = lambda self, x: np.random.uniform(0, 2*np.pi, x)
     zero_weight = lambda self, x, d: x/d if d else 0
     vector_weight = lambda self, x, d: np.divide(x, d, out=np.zeros_like(x, dtype=np.float), where=(d!=0))
+    
+    def get_dof(self, Nside, outbeam):
+        dof = (Nside**4 - Nside**2) - 2*(2*Nside*3*(2*Nside + Nside - 1) + (outbeam*Nside)**2)
+        return dof
 
     def get_num_baselines(self, Nside):
         N_bases = 2*Nside**2 - 2*Nside
@@ -489,9 +493,11 @@ class RealArray:
     
     def create_beams(self, rad=.4):
         beam_comp_phase = np.exp(1j*self.rand_phases(self.Nant))
+        self.overall_gains = beam_comp_phase
         new_beams = np.array([self.get_circle_array(rad, self.n_beam, .05, self.gpos[i])*beam_comp_phase[i]*self.point_err[i] for i in range(self.Nant)])
         self.beams = new_beams
         fake_beams = np.array([self.get_circle_array(rad, self.n_beam, .05, [0,0]) for i in range(self.Nant)])
+        self.fake_beams = fake_beams
         rms = self.guess_rms(fake_beams, 100, 75)
         self.rms = rms
         
@@ -525,13 +531,14 @@ class RealArray:
         self.beams = self.beams + eps*np.random.random((*self.beams.shape, 2)).view(dtype=np.complex128).reshape(self.beams.shape)
         
     def errorless_data(self):
-        _, data, ant_i, ant_j, visndx, _, _, _, _, _, _ = self.make_data_grid(self.Nside, self.gains, self.beams, noise=0)
+        vistrue, data, ant_i, ant_j, visndx, _, _, _, _, _, _ = self.make_data_grid(self.Nside, self.gains, self.beams, noise=0)
         data_len = len(data)
         self.errorless = data
         self.ant_i = ant_i
         self.ant_j = ant_j
         self.data_len = data_len
         self.visndx = visndx
+        self.vistrue = vistrue
         
     def base_noise(self):
         chin = np.ones(self.data_len)*self.rms
@@ -555,6 +562,7 @@ class RealArray:
         chig, chiv, c, n = barray.chimincal(100, self.data, beam_gain_guess, vis_guess, self.fanti, self.fantj, self.mid_flat, delta=.4, noise=self.chin)
         print("Red cal: ", c[-1])
         self.red_chig = chig
+        self.red_chiv = chiv
         self.red_chis = c
 
     def create_fit(self, outbeam, nmax=100, wien=True, bg=None, ib=None):
@@ -589,3 +597,204 @@ class RealArray:
         print("Original guess, ", self.vec_chi2(self.data, iscore, self.chin))
 
         self.itersolve = self.solve_everything(nmax, self.bad_guess, self.improv_beam, self.gains, self.data, ant_i, ant_j, fakeflat, self.Nside, self.chin, wien=wien)
+            
+    def bin_xs(self, bigM, outsize=3):
+        if outsize==3:
+            modM = bigM%3
+            if modM%2==0:
+                central_size = bigM//3
+            else:
+                central_size = bigM//3+1
+
+            leftovers = (bigM-central_size)//2
+            xs = [0]*leftovers + [1]*central_size + [2]*leftovers
+            xs = np.array(xs)
+        else:
+            xs = np.floor(np.linspace(0, outsize, bigM, endpoint=False)).astype(np.int)
+
+        return xs
+    
+    
+    
+    
+    def bin_beams(self, beams, outsize=3):
+        totsize = beams.shape[0]
+        bigM = beams.shape[-1]
+        xs = self.bin_xs(bigM, outsize)
+        binned_beam = np.zeros((totsize, outsize, outsize), dtype=np.complex)
+        bin_counts = np.zeros_like(binned_beam)
+        for n in range(totsize):
+            for i in range(bigM):
+                for j in range(bigM):
+                    ibin = xs[i]
+                    jbin = xs[j]
+                    binned_beam[n, ibin, jbin] += beams[n, i,j]
+                    bin_counts[n, ibin, jbin] += 1
+        final_beams = binned_beam/bin_counts
+        return final_beams
+    
+    def gaussian_chi2(self, data, noise, vis, beams, gains, priors, sigma, ant_i, ant_j, flatndx):
+        # Make prediction
+        Nant = len(beams)
+        beam_shapesize = np.prod(beams[0].shape)
+        dof = self.get_dof(int(np.sqrt(Nant)), int(np.sqrt(beam_shapesize)))
+        prediction = self.flat_model(vis, beams, gains, ant_i, ant_j, flatndx)
+        chi2, _, _ = self.vec_chi2(prediction, data, noise)
+        focaccia = []
+        for i, b in enumerate(beams):
+            focaccia.append((np.abs(b - priors[i])**2)/sigma**2)
+        prior_term = np.array(focaccia)
+        totchi2 = chi2 + np.sum(prior_term) + Nant*beam_shapesize*np.log(sigma)
+        return totchi2
+    
+    def gaussian_beam_solver4(self, vis, beam_guess, beam_priors, gains, sigma, data, noise, ant_i, ant_j, flatndx, Nside):
+        Nant = Nside**2
+        n_beam = beam_guess.shape[1]
+        fn_bm = 2*n_beam - 1
+        ns = noise[0]
+        total_beamsize = n_beam**2
+        matrix_beams = np.zeros((beam_guess.shape[0], fn_bm**2, total_beamsize), dtype=complex)
+
+        beam_count = (Nant-1)
+
+        for i,v in enumerate(beam_guess):
+            matrix_beams[i] = self.generic_block_toep(v) * gains[i]
+
+        matrix_beams = np.array(matrix_beams)
+
+        new_beams = beam_guess.copy()
+        beam_solver = np.zeros((beam_count+total_beamsize, total_beamsize), dtype=complex)
+        rhs_vis = np.zeros(beam_count + total_beamsize, dtype=complex)
+
+        for ant_ndx in range(Nant):
+
+            Bi = beam_guess[ant_ndx].flatten()
+            Bp = beam_priors[ant_ndx].flatten()
+
+            ant_filter = ant_i==ant_ndx
+            sum_ants = np.sum(ant_filter)
+            jant_filter = ant_j==ant_ndx
+
+            rhs_vis[:sum_ants] = data[ant_filter]/ns
+            rhs_vis[sum_ants:-total_beamsize] = np.conjugate(data[jant_filter])/ns
+
+            for i in range(sum_ants):
+                beam_solver[i] = (self.conjugate_visib(vis, flatndx[ant_filter][i])[None,:] \
+                    @ np.conjugate(matrix_beams[ant_j[ant_filter]][i][::-1, ::-1]))/ns
+            for j in range(np.sum(jant_filter)):
+                beam_solver[sum_ants + j] = ((np.conjugate(self.conjugate_visib(vis, flatndx[jant_filter][j])[None,:]) \
+                    @ np.conjugate(matrix_beams[ant_i[jant_filter]][j]))[::-1,::-1])/ns
+                
+            # Adding Gaussian prior to system
+            rhs_vis[-total_beamsize:] = Bp/sigma
+    #         beam_solver[-total_beamsize:] = np.identity(total_beamsize)*np.exp(-1j*np.angle(beam_priors[ant_ndx][1,1]))
+            beam_center_gain = beam_guess[ant_ndx][1,1]
+            beam_solver[-total_beamsize:] = np.identity(total_beamsize)*np.conj(beam_center_gain)/sigma
+
+            zerobeam = optimize.lsq_linear(beam_solver, rhs_vis).x
+            shaped_beam = zerobeam.reshape((n_beam, n_beam))
+            matrix_beams[ant_ndx] = self.generic_block_toep(shaped_beam)
+            new_beams[ant_ndx] = shaped_beam
+        return new_beams
+    
+    def gaussian_sigma_iter(self, beam_guess, beam_prior):
+        bg = beam_guess.flatten()
+        bp = beam_prior.flatten()
+        newsig = 2*np.std((np.abs(bg) - np.abs(bp)))
+        return newsig
+    
+    def gaussian_solve_everything(self, iter_max, vis_guess, beam_guess, gains, bprior, sigma, data, ant_i, ant_j, flatndx, Nside, noise, chi_eps=1, score_stop=.8, wiener=True, alpha=1):
+        chis = []
+        scores = []
+        sigmas = []
+        Nant = Nside**2
+        dof = Nside**4 - Nside**2 - 2*(len(vis_guess.flatten())-1)
+        chi  = self.gaussian_chi2(data, noise, vis_guess, beam_guess, gains, bprior, sigma, ant_i, ant_j, flatndx)
+        score = chi/dof
+        chis.append(chi)
+        scores.append(score)
+        sigmas.append(sigma)
+        fvis = len(vis_guess)
+        n = 0
+        dchi = 1000
+
+        if iter_max != 0:
+            counter = iter_max
+        else: 
+            counter = 10
+
+        while counter >= 0:
+
+            if wiener:
+                new_vis = self.vis_solv(vis_guess, beam_guess, gains, data, noise, ant_i, ant_j, flatndx, fvis)
+            else:
+                new_vis = old_vis_solver(vis_guess, beam_guess, gains, data, ant_i, ant_j, flatndx)
+
+            dvis = new_vis - vis_guess
+            vis_guess = vis_guess + alpha*dvis
+
+            new_beams = self.gaussian_beam_solver4(vis_guess, beam_guess, bprior, gains, sigma,
+                                                          data, noise, ant_i, ant_j, flatndx, Nside)
+            # We want the beam to have no overall gain so divide by center
+            dbeam = new_beams - beam_guess
+            beam_guess = beam_guess + alpha*dbeam
+            
+            sigma = self.gaussian_sigma_iter(beam_guess, bprior)
+
+            chi  = self.gaussian_chi2(data, noise, vis_guess, beam_guess, gains, bprior, sigma, ant_i, ant_j, flatndx)
+            score = chi/dof
+            chis.append(chi)
+            scores.append(score)
+            sigmas.append(sigma)
+
+            dchi = np.abs(chi - chis[-2])
+
+            if n%50==0:
+                print(n, score, chi, dchi, sigma)
+            if (dchi < chi_eps) and (n > 10):
+                break
+            if iter_max != 0:
+                counter -= 1
+            n += 1
+
+        chis = np.array(chis)
+        scores = np.array(scores)
+        sigmas = np.array(sigmas)
+        print(n, score, chi, sigma)
+
+        return vis_guess, beam_guess, chis, scores, sigmas
+    
+    
+    def gauss_fit(self, outbeam, prior, nmax=100, wien=True, bg=None, ib=None):
+        bshape = (self.Nant, outbeam, outbeam)
+        fakeflat, ant_i, ant_j = self.create_fake_flatndx(self.Nside, outbeam)
+        fakevislen = len(set(np.abs(fakeflat).flatten()))+1
+        self.fakevislen = fakevislen
+        self.fanti = ant_i
+        self.fantj = ant_j
+        
+        dvec_len = len(fakeflat[0])
+        mid_ndx = int((dvec_len-1)/2)
+        self.mid_flat = fakeflat[:,mid_ndx]
+
+#         print('Guessing visibility')
+        if bg is not None:
+            self.bad_guess = bg
+        else:
+            bg = np.random.normal(0, 1, (fakevislen, 2)).view(np.complex128).flatten()
+            self.bad_guess = bg
+        
+#         print('Guessing beams')
+        if ib is not None:
+            self.improv_beam = ib
+        else:
+            ib = np.random.normal(0, 1, (*bshape, 2)).view(np.complex128).reshape(bshape)
+            self.improv_beam = ib
+        
+        fit_params = fakevislen - 1 + len(self.improv_beam.flatten())
+        self.dof = self.Nside**4 - self.Nside**2 - 2*fit_params
+        iscore = self.flat_model(self.bad_guess, self.improv_beam, self.gains, ant_i, ant_j, fakeflat)
+        print("Original guess, ", self.vec_chi2(self.data, iscore, self.chin))
+        origstd = np.std((self.improv_beam.flatten()-prior.flatten()))
+
+        self.gauss_itersolve = self.gaussian_solve_everything(nmax, self.bad_guess, self.improv_beam, self.gains, prior, 1, self.data, ant_i, ant_j, fakeflat, self.Nside, self.chin, wiener=wien)
