@@ -105,7 +105,9 @@ class BasicArray:
     
     def vchi2(self, data, gains, vis, ant_i, ant_j, visndx, noise):
         pred = self.make_pred(gains, vis, ant_i, ant_j, visndx)
-        chi2 = (np.abs((data - pred)**2)/(noise**2)).sum().real
+        chi2_real = np.sum((data.real - pred.real)**2/noise**2)
+        chi2_imag = np.sum((data.imag - pred.imag)**2/noise**2)
+        chi2 = chi2_real + chi2_imag
         dof = 2*(len(data)- len(vis) - len(gains))
         return chi2, dof
     
@@ -151,7 +153,7 @@ class BasicArray:
             varr *= (1/gscale)**2
 
             chi, dof = self.vchi2(data, garr, varr, ant_i, ant_j, visndx, noise)
-            chiscores.append(chi/dof)
+            chiscores.append(chi)
             if n > 20:
                 if np.abs(chiscores[-2] - chiscores[-1]) < epsilon:
                     break
